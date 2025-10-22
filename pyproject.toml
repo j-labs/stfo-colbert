@@ -23,3 +23,8 @@ docs = [
 
 [tool.setuptools]
 exclude-package-data = {"*" = ["example_data/*", "tests/*", "stfo_indexes/*"]}
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.2",
+]
