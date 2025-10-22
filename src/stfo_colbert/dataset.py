@@ -1,4 +1,5 @@
 import io
+import lzma
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,20 +12,13 @@ from .utils import read_text_file, write_text_file
 class PreparedDataset:
     # Original input path (file or directory)
     source: Path
-    # Temporary delimited text file created only if source was a directory.
-    # None if source itself is a delimited text file.
-    temp_delimited_path: Path | None
     # Document IDs and their content (kept in-memory for serving text in responses)
     document_ids: list[str]
     documents: list[str]
 
     def cleanup(self) -> None:
-        # Remove temporary file if created
-        if self.temp_delimited_path and self.temp_delimited_path.exists():
-            try:
-                self.temp_delimited_path.unlink()
-            except Exception:
-                pass
+        # No cleanup needed - cache files are persisted
+        pass
 
 
 # -----------------
@@ -97,10 +91,27 @@ def prepare_from_delimited_txt(path: Path) -> PreparedDataset:
     parts = [p.strip() for p in raw.split(DELIMITER)]
     docs = [p for p in parts if p]
     ids = [str(i) for i in range(len(docs))]
-    return PreparedDataset(source=path, temp_delimited_path=None, document_ids=ids, documents=docs)
+    return PreparedDataset(source=path, document_ids=ids, documents=docs)
 
 
 def prepare_from_directory(dir_path: Path) -> PreparedDataset:
+    # Check for existing compressed cache file
+    cache_path = dir_path / ".stfo_colbert_cache.txt.xz"
+
+    if cache_path.exists():
+        # Reuse existing compressed cache
+        try:
+            with lzma.open(cache_path, 'rt', encoding='utf-8') as f:
+                raw = f.read()
+            parts = [p.strip() for p in raw.split(DELIMITER)]
+            docs = [p for p in parts if p]
+            ids = [str(i) for i in range(len(docs))]
+            return PreparedDataset(source=dir_path, temp_delimited_path=None, document_ids=ids, documents=docs)
+        except Exception:
+            # If reading cache fails, fall through to re-parse
+            pass
+
+    # Parse directory contents
     files = sorted([p for p in dir_path.rglob("*") if p.is_file()])
     docs: list[str] = []
     for p in files:
@@ -120,13 +131,14 @@ def prepare_from_directory(dir_path: Path) -> PreparedDataset:
 
     ids = [str(i) for i in range(len(docs))]
 
-    # Write a temporary delimited file for transparency/traceability (deleted later)
-    tmp = tempfile.NamedTemporaryFile(prefix="stfo_colbert_", suffix=".txt", delete=False)
-    tmp_path = Path(tmp.name)
-    tmp.close()
-    write_text_file(tmp_path, DELIMITER.join(docs))
+    # Create cache file directly in the source directory
+    try:
+        with lzma.open(cache_path, 'wt', encoding='utf-8') as f:
+            f.write(DELIMITER.join(docs))
+    except Exception:
+        pass
 
-    return PreparedDataset(source=dir_path, temp_delimited_path=tmp_path, document_ids=ids, documents=docs)
+    return PreparedDataset(source=dir_path, temp_delimited_path=None, document_ids=ids, documents=docs)
 
 
 def prepare_dataset(path: Path) -> PreparedDataset:
