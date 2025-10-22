@@ -1,6 +1,6 @@
 # stfo-colbert
 
-> Straightforward ColBERT indexing and serving
+> Straightforward ColBERT indexing and serving (if you need a development ColBERT server)
 
 ## Design Goals
 
@@ -110,7 +110,7 @@ Document two text
 
 ### 2. Directory of document files
 
-When `--dataset-path` points to a directory, stfo-colbert will scan for files and build a temporary delimited TXT for indexing, then delete it afterward.
+When `--dataset-path` points to a directory, stfo-colbert will scan for files and create a compressed cache file (`.stfo_colbert_cache.txt.xz`) in that directory. On later runs, this cache is reused instead of re-parsing all files, significantly speeding up initialization.
 
 **Supported file types:**
 - **Always supported**: `.txt`, `.md`
@@ -121,6 +121,10 @@ To enable optional formats:
 pip install "stfo-colbert[docs]"
 ```
 
+**Cache behavior:**
+- The cache file is automatically created after the first directory scan
+- To force a re-scan, delete the `.stfo_colbert_cache.txt.xz` file from the dataset directory
+
 ## Index Format
 
 stfo-colbert uses PyLate's PLAID index under the hood:
@@ -128,7 +132,11 @@ stfo-colbert uses PyLate's PLAID index under the hood:
 - Encodes documents and builds an index in-memory
 - Serves top-k retrieval via a simple HTTP API
 
-If you pass `--index-path`, it must be a folder containing a previously built PLAID index (index file + metadata). If a matching `collection.tsv` is present next to it, text snippets will be returned.
+The index directory contains:
+- **PLAID index files**: The core PyLate index structure
+- **`collection.json.xz`**: A compressed JSON mapping of document IDs to their text content
+
+When you build an index from documents, stfo-colbert automatically creates the `collection.json.xz` file to enable text retrieval in search results. If you pass `--index-path` with an existing index, search results will include text snippets only if `collection.json.xz` is present in the index directory.
 
 ## HTTP API
 
@@ -153,13 +161,13 @@ If you pass `--index-path`, it must be a folder containing a previously built PL
 }
 ```
 
-> **Note:** The `text` field is included if the collection mapping is available (e.g., from a delimited TXT or `collection.tsv`).
+> **Note:** The `text` field is included if the collection mapping is available (e.g., from a delimited TXT or `collection.json.xz`).
 
 ## Design Notes
 
 - **Functional approach**: Modules expose pure functions; the CLI composes them
 - **Minimal dependencies**: FastAPI for the web layer, Uvicorn ASGI server, PyLate for model+index. Optional document parsers are extras
-- **Temporary files**: Any temporary delimited TXT created from a directory is deleted automatically after the index is constructed
+- **Persistent caching**: When processing directories, a compressed cache file (`.stfo_colbert_cache.txt.xz`) is saved in the dataset directory for faster subsequent runs
 
 ## Development
 
