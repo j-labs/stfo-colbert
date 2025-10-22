@@ -218,3 +218,4 @@ __marimo__/
 # custom
 stfo_indexes/
 .idea/
+.DS_Store
