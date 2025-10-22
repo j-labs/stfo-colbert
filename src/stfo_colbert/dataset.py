@@ -106,7 +106,7 @@ def prepare_from_directory(dir_path: Path) -> PreparedDataset:
             parts = [p.strip() for p in raw.split(DELIMITER)]
             docs = [p for p in parts if p]
             ids = [str(i) for i in range(len(docs))]
-            return PreparedDataset(source=dir_path, temp_delimited_path=None, document_ids=ids, documents=docs)
+            return PreparedDataset(source=dir_path, document_ids=ids, documents=docs)
         except Exception:
             # If reading cache fails, fall through to re-parse
             pass
@@ -138,7 +138,7 @@ def prepare_from_directory(dir_path: Path) -> PreparedDataset:
     except Exception:
         pass
 
-    return PreparedDataset(source=dir_path, temp_delimited_path=None, document_ids=ids, documents=docs)
+    return PreparedDataset(source=dir_path, document_ids=ids, documents=docs)
 
 
 def prepare_dataset(path: Path) -> PreparedDataset:
