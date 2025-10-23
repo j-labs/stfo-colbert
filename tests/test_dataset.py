@@ -65,7 +65,7 @@ def test_cache_file_format(tmp_path: Path):
     write_text_file(a, "First document")
     write_text_file(b, "Second document")
 
-    prepared = prepare_from_directory(tmp_path)
+    _ = prepare_from_directory(tmp_path)
     cache_path = tmp_path / ".stfo_colbert_cache.txt.xz"
 
     # Read and verify cache file contents
@@ -84,10 +84,6 @@ def test_cleanup_does_nothing(tmp_path: Path):
     a = tmp_path / "a.txt"
     write_text_file(a, "Content")
 
-    prepared = prepare_from_directory(tmp_path)
+    _ = prepare_from_directory(tmp_path)
     cache_path = tmp_path / ".stfo_colbert_cache.txt.xz"
-    assert cache_path.exists()
-
-    # Cleanup should not delete cache file
-    prepared.cleanup()
     assert cache_path.exists()

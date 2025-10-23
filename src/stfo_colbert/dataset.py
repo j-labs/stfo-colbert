@@ -19,10 +19,6 @@ class PreparedDataset:
     document_ids: list[str]
     documents: list[str]
 
-    def cleanup(self) -> None:
-        # No cleanup needed - cache files are persisted
-        pass
-
 
 # -----------------
 # Reading utilities

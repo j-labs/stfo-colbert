@@ -69,8 +69,6 @@ def main() -> None:
     except Exception as e:
         logger.exception("CLI failed while building/serving from dataset: %s", e)
         raise SystemExit(1)
-    finally:
-        prepared.cleanup()
 
 
 if __name__ == "__main__":
