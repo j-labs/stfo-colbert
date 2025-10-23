@@ -30,15 +30,19 @@ def main() -> None:
 
     if args.index_path:
         logger.info("Loading existing index from %s", args.index_path)
-        retriever = load_index_only(args.index_path)
-        # Load a model for query encoding even in index-only mode
-        from .indexer import load_model
-        model = load_model(args.model_name)
-        # Try to load collection mapping if available
-        collection = load_collection_json(args.index_path)
-        app = create_app(model=model, retriever=retriever, collection=collection)
-        run_server(app, port=args.port)
-        return
+        try:
+            retriever = load_index_only(args.index_path)
+            # Load a model for query encoding even in index-only mode
+            from .indexer import load_model
+            model = load_model(args.model_name)
+            # Try to load collection mapping if available
+            collection = load_collection_json(args.index_path)
+            app = create_app(model=model, retriever=retriever, collection=collection)
+            run_server(app, port=args.port)
+            return
+        except Exception as e:
+            logger.exception("CLI failed in index-only mode: %s", e)
+            raise SystemExit(1)
 
     # Dataset path provided: build index then serve
     logger.info("Preparing dataset at %s", args.dataset_path)
@@ -62,6 +66,9 @@ def main() -> None:
 
         app = create_app(model=artifacts.model, retriever=artifacts.retriever, collection=collection_map)
         run_server(app, port=args.port)
+    except Exception as e:
+        logger.exception("CLI failed while building/serving from dataset: %s", e)
+        raise SystemExit(1)
     finally:
         prepared.cleanup()
 
