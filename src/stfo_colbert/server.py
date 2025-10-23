@@ -17,11 +17,11 @@ def _results_to_topk(results: list[list[RerankResult]], collection: Mapping[str,
     topk: list[dict[str, Any]] = []
     all_scores: list[float] = []
 
-    # Process list[list[RerankResult]]
+    # Process list[list[RerankResult]] (RerankResult is a typed dict!)
     if results:
         for rank, result in enumerate(results[0]):
-            doc_id = result.id
-            score = result.score
+            doc_id = result["id"]
+            score = result["score"]
             text = collection.get(doc_id) if collection else None
             d = {"pid": doc_id, "rank": rank, "score": score}
             if text is not None:
