@@ -1,7 +1,6 @@
 import lzma
 from pathlib import Path
 
-import pytest
 
 from stfo_colbert import DELIMITER
 from stfo_colbert.dataset import prepare_from_delimited_txt, prepare_from_directory
@@ -69,7 +68,7 @@ def test_cache_file_format(tmp_path: Path):
     cache_path = tmp_path / ".stfo_colbert_cache.txt.xz"
 
     # Read and verify cache file contents
-    with lzma.open(cache_path, 'rt', encoding='utf-8') as f:
+    with lzma.open(cache_path, "rt", encoding="utf-8") as f:
         cache_content = f.read()
 
     # Cache should contain documents joined by delimiter

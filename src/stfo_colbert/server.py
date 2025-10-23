@@ -13,7 +13,9 @@ from .indexer import encode_query, retrieve_topk
 logger = logging.getLogger(__name__)
 
 
-def _results_to_topk(results: list[list[RerankResult]], collection: Mapping[str, str] | None) -> list[dict[str, Any]]:
+def _results_to_topk(
+    results: list[list[RerankResult]], collection: Mapping[str, str] | None
+) -> list[dict[str, Any]]:
     topk: list[dict[str, Any]] = []
     all_scores: list[float] = []
 
@@ -44,7 +46,11 @@ def _results_to_topk(results: list[list[RerankResult]], collection: Mapping[str,
     return topk
 
 
-def create_app(model: models.ColBERT, retriever: retrieve.ColBERT, collection: Mapping[str, str] | None = None) -> FastAPI:
+def create_app(
+    model: models.ColBERT,
+    retriever: retrieve.ColBERT,
+    collection: Mapping[str, str] | None = None,
+) -> FastAPI:
     app = FastAPI()
 
     @lru_cache(maxsize=1024)

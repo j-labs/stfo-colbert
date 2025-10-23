@@ -26,8 +26,13 @@ def load_model(model_name: str) -> models.ColBERT:
     return models.ColBERT(model_name_or_path=model_name)
 
 
-def build_index(documents: list[str], document_ids: list[str], index_path: Path, model_name: str,
-                batch_size: int = 32) -> IndexArtifacts:
+def build_index(
+    documents: list[str],
+    document_ids: list[str],
+    index_path: Path,
+    model_name: str,
+    batch_size: int = 32,
+) -> IndexArtifacts:
     index_path = ensure_dir(index_path)
 
     model = load_model(model_name)
@@ -56,7 +61,9 @@ def build_index(documents: list[str], document_ids: list[str], index_path: Path,
 
     retriever = retrieve.ColBERT(index=index)
     logger.info("Index ready at %s", index_path)
-    return IndexArtifacts(index_dir=index_path, model=model, index=index, retriever=retriever)
+    return IndexArtifacts(
+        index_dir=index_path, model=model, index=index, retriever=retriever
+    )
 
 
 def load_index_only(index_path: Path) -> retrieve.ColBERT:
@@ -72,7 +79,9 @@ def encode_query(model: models.ColBERT, query: str):
     return model.encode([query], batch_size=1, is_query=True, show_progress_bar=False)
 
 
-def retrieve_topk(retriever: retrieve.ColBERT, query_embeddings, k: int) -> list[list[RerankResult]]:
+def retrieve_topk(
+    retriever: retrieve.ColBERT, query_embeddings, k: int
+) -> list[list[RerankResult]]:
     return retriever.retrieve(queries_embeddings=query_embeddings, k=k)
 
 
@@ -80,8 +89,8 @@ def save_collection_json(collection: dict[str, str], index_path: Path) -> None:
     """Save collection mapping to compressed JSON file."""
     collection_file = index_path / "collection.json.xz"
     logger.info("Saving collection mapping to %s", collection_file)
-    json_bytes = json.dumps(collection, ensure_ascii=False).encode('utf-8')
-    with lzma.open(collection_file, 'wb') as f:
+    json_bytes = json.dumps(collection, ensure_ascii=False).encode("utf-8")
+    with lzma.open(collection_file, "wb") as f:
         f.write(json_bytes)
 
 
@@ -89,9 +98,12 @@ def load_collection_json(index_path: Path) -> dict[str, str] | None:
     """Load collection mapping from compressed JSON file if it exists."""
     collection_file = index_path / "collection.json.xz"
     if not collection_file.exists():
-        logger.warning("No collection.json.xz found at %s - search results will not include text", index_path)
+        logger.warning(
+            "No collection.json.xz found at %s - search results will not include text",
+            index_path,
+        )
         return None
     logger.info("Loading collection mapping from %s", collection_file)
-    with lzma.open(collection_file, 'rb') as f:
+    with lzma.open(collection_file, "rb") as f:
         json_bytes = f.read()
-    return json.loads(json_bytes.decode('utf-8'))
+    return json.loads(json_bytes.decode("utf-8"))

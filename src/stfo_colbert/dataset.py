@@ -43,9 +43,9 @@ def _read_document(path: Path) -> str:
         doc = pymupdf.open(str(path))
         out = io.StringIO()
         for i, page in enumerate(doc.pages()):
-            out.write(f"---- Beginning of page {i+1} ----\n\n")
+            out.write(f"---- Beginning of page {i + 1} ----\n\n")
             out.write(page.get_text() or "")
-            out.write(f"\n\n---- End of page {i+1} ----\n\n")
+            out.write(f"\n\n---- End of page {i + 1} ----\n\n")
         doc.close()
         return _clean_delimiter(out.getvalue())
     except Exception as e:
@@ -73,7 +73,7 @@ def prepare_from_directory(dir_path: Path) -> PreparedDataset:
     if cache_path.exists():
         # Reuse existing compressed cache
         try:
-            with lzma.open(cache_path, 'rt', encoding='utf-8') as f:
+            with lzma.open(cache_path, "rt", encoding="utf-8") as f:
                 raw = f.read()
             parts = [p.strip() for p in raw.split(DELIMITER)]
             docs = [p for p in parts if p]
@@ -81,7 +81,11 @@ def prepare_from_directory(dir_path: Path) -> PreparedDataset:
             return PreparedDataset(source=dir_path, document_ids=ids, documents=docs)
         except Exception as e:
             # If reading cache fails, fall through to re-parse
-            logger.exception("Failed reading cache at %s, will re-parse directory. Error: %s", cache_path, e)
+            logger.exception(
+                "Failed reading cache at %s, will re-parse directory. Error: %s",
+                cache_path,
+                e,
+            )
 
     # Parse directory contents
     files = sorted([p for p in dir_path.rglob("*") if p.is_file()])
@@ -97,13 +101,15 @@ def prepare_from_directory(dir_path: Path) -> PreparedDataset:
             continue
         # Skip empty extractions
         if text.strip():
-            docs.append(text.strip())  # TODO: instead of doing it in RAM, dump to disk and stream from there
+            docs.append(
+                text.strip()
+            )  # TODO: instead of doing it in RAM, dump to disk and stream from there
 
     ids = [str(i) for i in range(len(docs))]
 
     # Create cache file directly in the source directory
     try:
-        with lzma.open(cache_path, 'wt', encoding='utf-8') as f:
+        with lzma.open(cache_path, "wt", encoding="utf-8") as f:
             f.write(DELIMITER.join(docs))
     except Exception as e:
         logger.exception("Failed writing cache to %s: %s", cache_path, e)
@@ -126,9 +132,7 @@ def prepare_dataset(
         raise FileNotFoundError(f"Dataset path does not exist: {path}")
 
     # Create text splitter -> max length is taken from model config
-    splitter = SentenceTransformersTokenTextSplitter(
-        model_name=model_name
-    )
+    splitter = SentenceTransformersTokenTextSplitter(model_name=model_name)
 
     # Split documents into chunks
     all_chunks: list[str] = []
