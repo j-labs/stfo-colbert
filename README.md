@@ -7,13 +7,12 @@
 - **Straightforward**: Single-command usage via CLI (stfo is for "straightforward")
 - **Minimal**: Readable, functional code with minimal default dependencies
 - **Simple**: One HTTP endpoint only: `GET /search`
-- **Dataset-agnostic**: Accepts a single delimited `.txt` file or a directory of common document files
-- **Fast**: Indexing and serving in one process keeps the index in memory for fast queries
+- **For development usage**: Suitable for anyone who needs an adhoc sematic search server
 
 ## When to Use
 
 Use **stfo-colbert** when you:
-- Have a small-to-medium collection and want a simple way to build a sparse ColBERT-style index (via PyLate) and query it over HTTP
+- Have a small-to-medium collection and want a simple way to build a ColBERT-style index (via PyLate) and query it over HTTP
 - Prefer a one-shot CLI to index and serve, without additional orchestration
 
 ## Installation
@@ -172,6 +171,34 @@ pytest
 ```
 
 ## Examples
+
+### Using the included example data
+
+**Index Wikipedia summaries and query for specific topics:**
+```bash
+# Start the server with Wikipedia summaries
+stfo-colbert --dataset-path example_data/wikipedia_summaries.txt
+
+# Query for movies
+curl "http://127.0.0.1:8889/search?query=Disney%20animated%20movies&k=3"
+
+# Query for sports
+curl "http://127.0.0.1:8889/search?query=Olympic%20track%20and%20field%20events&k=5"
+```
+
+**Index arXiv PDFs and search research papers:**
+```bash
+# Start the server with PDF directory
+stfo-colbert --dataset-path example_data/arxiv_sample
+
+# Search for AI/ML topics
+curl "http://127.0.0.1:8889/search?query=machine%20learning%20transformers&k=5"
+
+# Search for specific research areas
+curl "http://127.0.0.1:8889/search?query=neural%20network%20architecture&k=3"
+```
+
+### General usage examples
 
 **Index directory of Markdown notes and serve on port 7777:**
 ```bash
