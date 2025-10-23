@@ -24,12 +24,6 @@ Use **stfo-colbert** when you:
 pip install stfo-colbert
 ```
 
-Or with optional document parser support:
-
-```bash
-pip install "stfo-colbert[docs]"
-```
-
 ### From source (development)
 
 ```bash
@@ -113,13 +107,8 @@ Document two text
 When `--dataset-path` points to a directory, stfo-colbert will scan for files and create a compressed cache file (`.stfo_colbert_cache.txt.xz`) in that directory. On later runs, this cache is reused instead of re-parsing all files, significantly speeding up initialization.
 
 **Supported file types:**
-- **Always supported**: `.txt`, `.md`
-- **Optional support** (requires extras): `.pdf`, `.docx`, `.odt`
-
-To enable optional formats:
-```bash
-pip install "stfo-colbert[docs]"
-```
+- `.txt`, `.md`
+- `.pdf`
 
 **Cache behavior:**
 - The cache file is automatically created after the first directory scan
@@ -166,7 +155,7 @@ When you build an index from documents, stfo-colbert automatically creates the `
 ## Design Notes
 
 - **Functional approach**: Modules expose pure functions; the CLI composes them
-- **Minimal dependencies**: FastAPI for the web layer, Uvicorn ASGI server, PyLate for model+index. Optional document parsers are extras
+- **Minimal dependencies**: FastAPI for the web layer, Uvicorn ASGI server, PyLate for model+index, PyMuPDF for PDF parsing
 - **Persistent caching**: When processing directories, a compressed cache file (`.stfo_colbert_cache.txt.xz`) is saved in the dataset directory for faster subsequent runs
 
 ## Development
@@ -180,11 +169,6 @@ pip install -e .
 ```bash
 pip install pytest
 pytest
-```
-
-**With optional document parsers:**
-```bash
-pip install -e ".[docs]"
 ```
 
 ## Examples
