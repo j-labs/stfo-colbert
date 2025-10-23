@@ -3,7 +3,8 @@ import logging
 from pathlib import Path
 
 from .dataset import prepare_dataset
-from .indexer import IndexArtifacts, build_index, load_index_only, save_collection_json, load_collection_json
+from .indexer import IndexArtifacts, build_index, load_index_only, save_collection_json, load_collection_json, \
+    load_model
 from .server import create_app, run_server
 
 DEFAULT_MODEL = "mixedbread-ai/mxbai-edge-colbert-v0-17m"
@@ -33,7 +34,6 @@ def main() -> None:
         try:
             retriever = load_index_only(args.index_path)
             # Load a model for query encoding even in index-only mode
-            from .indexer import load_model
             model = load_model(args.model_name)
             # Try to load collection mapping if available
             collection = load_collection_json(args.index_path)
