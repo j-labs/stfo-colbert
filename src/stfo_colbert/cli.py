@@ -46,7 +46,7 @@ def main() -> None:
 
     # Dataset path provided: build index then serve
     logger.info("Preparing dataset at %s", args.dataset_path)
-    prepared = prepare_dataset(args.dataset_path)
+    prepared = prepare_dataset(args.dataset_path, args.model_name)
     try:
         # By default create or reuse an index directory next to the dataset
         index_dir = (Path.cwd() / "stfo_indexes" / args.dataset_path.stem)

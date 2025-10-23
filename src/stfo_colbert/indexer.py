@@ -28,6 +28,7 @@ def load_model(model_name: str) -> models.ColBERT:
 
 def build_index(documents: list[str], document_ids: list[str], index_path: Path, model_name: str,
                 batch_size: int = 32) -> IndexArtifacts:
+    # TODO: add CLI and ColBERT handling for reduced precision int8 (as a --reduced-precision flag)
     index_path = ensure_dir(index_path)
 
     model = load_model(model_name)

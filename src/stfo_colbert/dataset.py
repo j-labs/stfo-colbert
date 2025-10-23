@@ -4,6 +4,9 @@ import logging
 from dataclasses import dataclass
 from pathlib import Path
 
+import pymupdf
+from langchain_text_splitters import SentenceTransformersTokenTextSplitter
+
 from . import DELIMITER
 from .utils import read_text_file
 
@@ -37,16 +40,12 @@ def _read_txt_or_md(path: Path) -> str:
 def _read_document(path: Path) -> str:
     """Read document content from various formats (PDF, XPS, EPUB, MOBI, FB2, CBZ, SVG)."""
     try:
-        import pymupdf
-    except Exception as e:
-        logger.exception("Failed to import pymupdf for reading %s: %s", path, e)
-        return ""
-    try:
         doc = pymupdf.open(str(path))
         out = io.StringIO()
-        for page in doc:
+        for i, page in enumerate(doc.pages()):
+            out.write(f"---- Beginning of page {i+1} ----\n\n")
             out.write(page.get_text() or "")
-            out.write("\n")
+            out.write(f"\n\n---- End of page {i+1} ----\n\n")
         doc.close()
         return _clean_delimiter(out.getvalue())
     except Exception as e:
@@ -89,14 +88,16 @@ def prepare_from_directory(dir_path: Path) -> PreparedDataset:
     docs: list[str] = []
     for p in files:
         suffix = p.suffix.lower()
-        text = ""
         if suffix in (".txt", ".md"):
             text = _read_txt_or_md(p)
-        elif suffix in (".pdf", ".xps", ".epub", ".mobi", ".fb2", ".cbz", ".svg"):
+        elif suffix in (".pdf", ".xps", ".epub", ".mobi", ".fb2", ".cbz"):
             text = _read_document(p)
+        else:
+            logger.warning("Ignoring unsupported file type: %s", suffix)
+            continue
         # Skip empty extractions
         if text.strip():
-            docs.append(text.strip())
+            docs.append(text.strip())  # TODO: instead of doing it in RAM, dump to disk and stream from there
 
     ids = [str(i) for i in range(len(docs))]
 
@@ -110,10 +111,36 @@ def prepare_from_directory(dir_path: Path) -> PreparedDataset:
     return PreparedDataset(source=dir_path, document_ids=ids, documents=docs)
 
 
-def prepare_dataset(path: Path) -> PreparedDataset:
+def prepare_dataset(
+    path: Path,
+    model_name: str,
+) -> PreparedDataset:
     path = path.expanduser().resolve()
+
+    # First, prepare the raw dataset
     if path.is_dir():
-        return prepare_from_directory(path)
-    if path.is_file():
-        return prepare_from_delimited_txt(path)
-    raise FileNotFoundError(f"Dataset path does not exist: {path}")
+        raw_dataset = prepare_from_directory(path)
+    elif path.is_file():
+        raw_dataset = prepare_from_delimited_txt(path)
+    else:
+        raise FileNotFoundError(f"Dataset path does not exist: {path}")
+
+    # Create text splitter -> max length is taken from model config
+    splitter = SentenceTransformersTokenTextSplitter(
+        model_name=model_name
+    )
+
+    # Split documents into chunks
+    all_chunks: list[str] = []
+    for doc in raw_dataset.documents:
+        chunks = splitter.split_text(doc)
+        all_chunks.extend(chunks)
+
+    # Generate IDs for chunks
+    chunk_ids = [str(i) for i in range(len(all_chunks))]
+
+    return PreparedDataset(
+        source=raw_dataset.source,
+        document_ids=chunk_ids,
+        documents=all_chunks,
+    )
