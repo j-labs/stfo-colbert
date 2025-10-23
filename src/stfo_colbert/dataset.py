@@ -1,11 +1,14 @@
 import io
 import lzma
-import tempfile
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 
 from . import DELIMITER
-from .utils import read_text_file, write_text_file
+from .utils import read_text_file
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -35,49 +38,23 @@ def _read_txt_or_md(path: Path) -> str:
     return _clean_delimiter(read_text_file(path))
 
 
-def _read_pdf_if_available(path: Path) -> str:
+def _read_document(path: Path) -> str:
+    """Read document content from various formats (PDF, XPS, EPUB, MOBI, FB2, CBZ, SVG)."""
     try:
-        from pypdf import PdfReader  # optional
-    except Exception:
+        import pymupdf
+    except Exception as e:
+        logger.exception("Failed to import pymupdf for reading %s: %s", path, e)
         return ""
     try:
-        reader = PdfReader(str(path))
+        doc = pymupdf.open(str(path))
         out = io.StringIO()
-        for page in reader.pages:
-            out.write(page.extract_text() or "")
+        for page in doc:
+            out.write(page.get_text() or "")
             out.write("\n")
+        doc.close()
         return _clean_delimiter(out.getvalue())
-    except Exception:
-        return ""
-
-
-def _read_docx_if_available(path: Path) -> str:
-    try:
-        import docx  # type: ignore  # optional python-docx
-    except Exception:
-        return ""
-    try:
-        d = docx.Document(str(path))
-        parts = [p.text for p in d.paragraphs]
-        return _clean_delimiter("\n".join(parts))
-    except Exception:
-        return ""
-
-
-def _read_odt_if_available(path: Path) -> str:
-    try:
-        from odf.opendocument import load  # optional
-        from odf.text import P
-    except Exception:
-        return ""
-    try:
-        txts: list[str] = []
-        doc = load(str(path))
-        for p in doc.getElementsByType(P):
-            if p.firstChild is not None:
-                txts.append(str(p.firstChild.data))
-        return _clean_delimiter("\n".join(txts))
-    except Exception:
+    except Exception as e:
+        logger.exception("Failed to extract text from %s: %s", path, e)
         return ""
 
 
@@ -107,9 +84,9 @@ def prepare_from_directory(dir_path: Path) -> PreparedDataset:
             docs = [p for p in parts if p]
             ids = [str(i) for i in range(len(docs))]
             return PreparedDataset(source=dir_path, document_ids=ids, documents=docs)
-        except Exception:
+        except Exception as e:
             # If reading cache fails, fall through to re-parse
-            pass
+            logger.exception("Failed reading cache at %s, will re-parse directory. Error: %s", cache_path, e)
 
     # Parse directory contents
     files = sorted([p for p in dir_path.rglob("*") if p.is_file()])
@@ -117,14 +94,10 @@ def prepare_from_directory(dir_path: Path) -> PreparedDataset:
     for p in files:
         suffix = p.suffix.lower()
         text = ""
-        if suffix in {".txt", ".md"}:
+        if suffix in (".txt", ".md"):
             text = _read_txt_or_md(p)
-        elif suffix == ".pdf":
-            text = _read_pdf_if_available(p)
-        elif suffix == ".docx":
-            text = _read_docx_if_available(p)
-        elif suffix == ".odt":
-            text = _read_odt_if_available(p)
+        elif suffix in (".pdf", ".xps", ".epub", ".mobi", ".fb2", ".cbz", ".svg"):
+            text = _read_document(p)
         # Skip empty extractions
         if text.strip():
             docs.append(text.strip())
@@ -135,8 +108,8 @@ def prepare_from_directory(dir_path: Path) -> PreparedDataset:
     try:
         with lzma.open(cache_path, 'wt', encoding='utf-8') as f:
             f.write(DELIMITER.join(docs))
-    except Exception:
-        pass
+    except Exception as e:
+        logger.exception("Failed writing cache to %s: %s", cache_path, e)
 
     return PreparedDataset(source=dir_path, document_ids=ids, documents=docs)
 
