@@ -5,6 +5,7 @@ import json
 import lzma
 
 from pylate import indexes, models, retrieve
+from pylate.rank import RerankResult
 
 from .utils import ensure_dir
 
@@ -71,7 +72,7 @@ def encode_query(model: models.ColBERT, query: str):
     return model.encode([query], batch_size=1, is_query=True, show_progress_bar=False)
 
 
-def retrieve_topk(retriever: retrieve.ColBERT, query_embeddings, k: int):
+def retrieve_topk(retriever: retrieve.ColBERT, query_embeddings, k: int) -> list[list[RerankResult]]:
     return retriever.retrieve(queries_embeddings=query_embeddings, k=k)
 
 
