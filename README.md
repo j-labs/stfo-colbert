@@ -63,14 +63,14 @@ curl "http://127.0.0.1:8889/search?query=hello&k=2"
       "rank": 0,
       "score": 0.92,
       "text": "Hello world! This is a sample document.",
-      "prob": 0.25
+      "prob": 0.51
     },
     {
       "pid": "2",
       "rank": 1,
       "score": 0.87,
       "text": "A friendly hello from another document.",
-      "prob": 0.20
+      "prob": 0.49
     }
   ]
 }
