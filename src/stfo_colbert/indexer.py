@@ -38,26 +38,26 @@ def build_index(
     model = load_model(model_name)
 
     # Reuse index directory if it exists; otherwise create a new one
+    # Always override existing index to avoid accidental appends when re-indexing
     index = indexes.PLAID(
         index_folder=str(index_path),
         index_name="index",
-        override=not (index_path / "index").exists(),
+        override=True,
     )
 
-    # If this is a new index (override True), encode and add documents
-    if getattr(index, "_override", True) or not any(index_path.iterdir()):
-        logger.info("Encoding %d documents for indexing", len(documents))
-        embeddings = model.encode(
-            documents,
-            batch_size=batch_size,
-            is_query=False,
-            show_progress_bar=True,
-        )
-        logger.info("Adding encoded documents to index directory: %s", index_path)
-        index.add_documents(
-            documents_ids=document_ids,
-            documents_embeddings=embeddings,
-        )
+    # Always (re)encode and add documents when building the index
+    logger.info("Encoding %d documents for indexing", len(documents))
+    embeddings = model.encode(
+        documents,
+        batch_size=batch_size,
+        is_query=False,
+        show_progress_bar=True,
+    )
+    logger.info("Adding encoded documents to index directory: %s", index_path)
+    index.add_documents(
+        documents_ids=document_ids,
+        documents_embeddings=embeddings,
+    )
 
     retriever = retrieve.ColBERT(index=index)
     logger.info("Index ready at %s", index_path)
