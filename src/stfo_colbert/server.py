@@ -61,7 +61,7 @@ def create_app(
         return {"query": q, "topk": topk}
 
     @app.get("/search")
-    def search(query: str = Query(..., min_length=1), k: int = Query(10, ge=1, le=100)):
+    def search(query: str = Query(..., min_length=2), k: int = Query(10, ge=1, le=100)):
         try:
             return cached_query(query, k)
         except Exception as e:
