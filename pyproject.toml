@@ -15,6 +15,10 @@ dependencies = [
 [project.scripts]
 stfo-colbert = "stfo_colbert.cli:main"
 
+[project.urls]
+Repository = "https://github.com/j-labs/stfo-colbert"
+Homepage = "https://github.com/j-labs/stfo-colbert"
+
 [tool.setuptools]
 exclude-package-data = {"*" = ["example_data/*", "tests/*", "stfo_indexes/*"]}
 
