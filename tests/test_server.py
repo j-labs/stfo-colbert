@@ -11,7 +11,7 @@ def test_search_endpoint(monkeypatch):
         return [0.0]
 
     def fake_retrieve_topk(retriever, q_emb, k):
-        return [[("0", 1.0), ("1", 0.5)]]
+        return [[{"id": "0", "score": 1.0}, {"id": "1", "score": 0.5}]]
 
     monkeypatch.setattr(srv, "encode_query", fake_encode_query)
     monkeypatch.setattr(srv, "retrieve_topk", fake_retrieve_topk)
@@ -46,7 +46,7 @@ def test_search_with_text_in_results(monkeypatch):
         return [0.0]
 
     def fake_retrieve_topk(retriever, q_emb, k):
-        return [[("doc1", 2.5), ("doc2", 1.3)]]
+        return [[{"id": "doc1", "score": 2.5}, {"id": "doc2", "score": 1.3}]]
 
     monkeypatch.setattr(srv, "encode_query", fake_encode_query)
     monkeypatch.setattr(srv, "retrieve_topk", fake_retrieve_topk)
@@ -76,7 +76,7 @@ def test_search_caching(monkeypatch):
         return [0.0]
 
     def fake_retrieve_topk(retriever, q_emb, k):
-        return [[("0", 1.0)]]
+        return [[{"id": "0", "score": 1.0}]]
 
     monkeypatch.setattr(srv, "encode_query", fake_encode_query)
     monkeypatch.setattr(srv, "retrieve_topk", fake_retrieve_topk)
