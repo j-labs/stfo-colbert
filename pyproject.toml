@@ -5,6 +5,12 @@ description = "Straightforward ColBERT indexing and serving (via PyLate)"
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
+authors = [
+    {name = "Jakub Gajski", email = "jakub.gajski@j-labs.pl"}
+]
+maintainers = [
+    {name = "Jakub Gajski", email = "jakub.gajski@gmail.com"}
+]
 dependencies = [
     "fastapi>=0.115",
     "uvicorn>=0.30",
