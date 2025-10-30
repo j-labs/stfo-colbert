@@ -61,6 +61,11 @@ local_settings.py
 db.sqlite3
 db.sqlite3-journal
 
+# SQLite databases and related files
+*.db
+*.db-shm
+*.db-wal
+
 # Flask stuff:
 instance/
 .webassets-cache
@@ -220,3 +225,4 @@ stfo_indexes/
 .idea/
 .DS_Store
 **/*.xz
+/example_data/wikipedia_20231101_en.txt

@@ -1,6 +1,6 @@
 [project]
 name = "stfo-colbert"
-version = "0.1.0"
+version = "0.2.0"
 description = "Straightforward ColBERT indexing and serving (via PyLate)"
 readme = "README.md"
 requires-python = ">=3.12"
