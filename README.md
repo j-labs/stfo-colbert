@@ -241,7 +241,7 @@ curl "http://127.0.0.1:8889/search?query=neural%20network%20architecture&k=3"
 python example_data/wikipedia_20231101_en.py
 
 # Index the Wikipedia dataset with streaming (handles large datasets efficiently)
-# The data will be processed in chunks to avoid memory issues
+# The data will be processed in chunks to avoid memory issues but it will take a lot of time anyway
 stfo-colbert --dataset-path wikipedia_20231101_en_shuffled.txt --chunk-size 10000
 
 # Search for topics in Wikipedia
