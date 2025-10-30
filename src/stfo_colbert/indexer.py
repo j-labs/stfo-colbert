@@ -13,11 +13,15 @@ logger = logging.getLogger(__name__)
 
 
 class CollectionDB(Mapping):
-    """Dict-like wrapper for SQLite collection storage with random access."""
+    """Dict-like wrapper for SQLite collection storage with random access.
+
+    Note: This class is not thread-safe. Each thread should create its own
+    CollectionDB instance if concurrent access is needed.
+    """
 
     def __init__(self, db_path: Path):
         self.db_path = db_path
-        self.conn = sqlite3.connect(str(db_path), check_same_thread=False)
+        self.conn = sqlite3.connect(str(db_path))
         self.conn.execute("PRAGMA journal_mode=WAL")  # Better concurrency
         self._ensure_table()
 
@@ -65,7 +69,7 @@ class CollectionDB(Mapping):
 
     def add_batch(self, items: list[tuple[str, str]]):
         """Add multiple documents efficiently."""
-        logger.info("Adding %d documents to collection.db", len(items))
+        logger.debug("Adding %d documents to collection.db", len(items))
         self.conn.executemany(
             "INSERT OR REPLACE INTO collection (doc_id, text) VALUES (?, ?)", items
         )
@@ -116,10 +120,19 @@ class CollectionWriter:
 
             # Commit batch when full
             if len(self.batch) >= self.batch_size:
-                self.db.add_batch(self.batch)
-                self.db.commit()
-                self.total_saved += len(self.batch)
-                self.batch.clear()
+                try:
+                    self.db.add_batch(self.batch)
+                    self.db.commit()
+                    self.total_saved += len(self.batch)
+                    logger.info(
+                        "Saved %d documents to collection (%d total saved)",
+                        len(self.batch),
+                        self.total_saved,
+                    )
+                    self.batch.clear()
+                except Exception as e:
+                    logger.error("Failed to save batch to collection: %s", e)
+                    raise
 
     def finalize(self) -> int:
         """Flush remaining documents and return total count.
@@ -128,10 +141,19 @@ class CollectionWriter:
             Total number of documents saved
         """
         if self.batch:
-            self.db.add_batch(self.batch)
-            self.db.commit()
-            self.total_saved += len(self.batch)
-            self.batch.clear()
+            try:
+                self.db.add_batch(self.batch)
+                self.db.commit()
+                self.total_saved += len(self.batch)
+                logger.info(
+                    "Saved final batch of %d documents to collection (%d total saved)",
+                    len(self.batch),
+                    self.total_saved,
+                )
+                self.batch.clear()
+            except Exception as e:
+                logger.error("Failed to save final batch to collection: %s", e)
+                raise
         return self.total_saved
 
     def close(self):
@@ -218,65 +240,99 @@ def build_index(
     first_chunk = True
     chunk_number = 0
 
-    for doc_idx, doc in enumerate(documents):
-        doc_chunk.append(doc)
-        id_chunk.append(str(doc_idx))
+    try:
+        for doc_idx, doc in enumerate(documents):
+            doc_chunk.append(doc)
+            id_chunk.append(str(doc_idx))
 
-        # When chunk is full, encode and add to index
-        if len(doc_chunk) >= encoding_chunk_size:
-            chunk_number += 1
-            if document_count is not None:
+            # When chunk is full, encode and add to index
+            if len(doc_chunk) >= encoding_chunk_size:
+                chunk_number += 1
+                if document_count is not None:
+                    logger.info(
+                        "Processing chunk %d: encoding documents %d-%d of %d (%.1f%% complete)",
+                        chunk_number,
+                        total_processed + 1,
+                        total_processed + len(doc_chunk),
+                        document_count,
+                        (total_processed / document_count) * 100,
+                    )
+                else:
+                    logger.info(
+                        "Processing chunk %d: encoding documents %d-%d",
+                        chunk_number,
+                        total_processed + 1,
+                        total_processed + len(doc_chunk),
+                    )
+
+                try:
+                    embeddings = model.encode(
+                        doc_chunk,
+                        batch_size=batch_size,
+                        is_query=False,
+                        show_progress_bar=True,
+                    )
+                except Exception as e:
+                    logger.error(
+                        "Failed to encode chunk %d (documents %d-%d): %s",
+                        chunk_number,
+                        total_processed + 1,
+                        total_processed + len(doc_chunk),
+                        e,
+                    )
+                    raise RuntimeError(
+                        f"Encoding failed at chunk {chunk_number}. "
+                        f"Index may be incomplete at {index_path}"
+                    ) from e
+
+                if first_chunk:
+                    # First chunk: initialize index with override=True
+                    logger.info(
+                        "Initializing index at %s with first chunk. Clustering will happen - it takes time.",
+                        index_path,
+                    )
+                    first_chunk = False
+                else:
+                    logger.info("Adding chunk %d to existing index", chunk_number)
+
+                try:
+                    index.add_documents(
+                        documents_ids=id_chunk,
+                        documents_embeddings=embeddings,
+                    )
+                except Exception as e:
+                    logger.error("Failed to add chunk %d to index: %s", chunk_number, e)
+                    raise RuntimeError(
+                        f"Failed to add documents to index at chunk {chunk_number}. "
+                        f"Index may be incomplete at {index_path}"
+                    ) from e
+
+                total_processed += len(doc_chunk)
                 logger.info(
-                    "Processing chunk %d: encoding documents %d-%d of %d (%.1f%% complete)",
+                    "Chunk %d indexed successfully (%d documents processed so far)",
                     chunk_number,
-                    total_processed + 1,
-                    total_processed + len(doc_chunk),
-                    document_count,
-                    (total_processed / document_count) * 100,
+                    total_processed,
                 )
-            else:
-                logger.info(
-                    "Processing chunk %d: encoding documents %d-%d",
-                    chunk_number,
-                    total_processed + 1,
-                    total_processed + len(doc_chunk),
-                )
-            embeddings = model.encode(
-                doc_chunk,
-                batch_size=batch_size,
-                is_query=False,
-                show_progress_bar=True,
-            )
 
-            if first_chunk:
-                # First chunk: initialize index with override=True
-                logger.info(
-                    "Initializing index at %s with first chunk. Clustering will happen - it takes time.",
-                    index_path,
-                )
-                first_chunk = False
-            else:
-                logger.info("Adding chunk %d to existing index", chunk_number)
+                # Save this chunk to collection if writer is provided
+                if collection_writer is not None:
+                    chunk_start_idx = total_processed - len(doc_chunk)
+                    collection_writer.add_documents(
+                        doc_chunk, start_idx=chunk_start_idx
+                    )
 
-            index.add_documents(
-                documents_ids=id_chunk,
-                documents_embeddings=embeddings,
-            )
-
-            total_processed += len(doc_chunk)
-            logger.info(
-                "Chunk %d indexed successfully (%d documents processed so far)",
-                chunk_number,
-                total_processed,
-            )
-
-            # Save this chunk to collection if writer is provided
-            if collection_writer is not None:
-                chunk_start_idx = total_processed - len(doc_chunk)
-                collection_writer.add_documents(doc_chunk, start_idx=chunk_start_idx)
-
-            doc_chunk.clear()
-            id_chunk.clear()
+                doc_chunk.clear()
+                id_chunk.clear()
+    except Exception:
+        logger.error(
+            "Index build failed after processing %d documents. "
+            "Cleaning up incomplete files at %s",
+            total_processed,
+            index_path,
+        )
+        # Note: We don't automatically delete the index directory here
+        # as it may contain useful partial data for debugging
+        raise
 
     # Handle remaining documents in the last chunk
     if doc_chunk:
@@ -297,20 +353,42 @@ def build_index(
                 total_processed + 1,
                 total_processed + len(doc_chunk),
             )
-        embeddings = model.encode(
-            doc_chunk,
-            batch_size=batch_size,
-            is_query=False,
-            show_progress_bar=True,
-        )
+
+        try:
+            embeddings = model.encode(
+                doc_chunk,
+                batch_size=batch_size,
+                is_query=False,
+                show_progress_bar=True,
+            )
+        except Exception as e:
+            logger.error(
+                "Failed to encode final chunk %d (documents %d-%d): %s",
+                chunk_number,
+                total_processed + 1,
+                total_processed + len(doc_chunk),
+                e,
+            )
+            raise RuntimeError(
+                f"Encoding failed at final chunk {chunk_number}. "
+                f"Index may be incomplete at {index_path}"
+            ) from e
 
         if first_chunk:
             logger.info("Initializing index at %s (single chunk only)", index_path)
 
-        index.add_documents(
-            documents_ids=id_chunk,
-            documents_embeddings=embeddings,
-        )
+        try:
+            index.add_documents(
+                documents_ids=id_chunk,
+                documents_embeddings=embeddings,
+            )
+        except Exception as e:
+            logger.error("Failed to add final chunk %d to index: %s", chunk_number, e)
+            raise RuntimeError(
+                f"Failed to add final documents to index at chunk {chunk_number}. "
+                f"Index may be incomplete at {index_path}"
+            ) from e
+
         total_processed += len(doc_chunk)
         logger.info(
             "Final chunk %d indexed successfully (%d total documents)",
@@ -330,6 +408,22 @@ def build_index(
         chunk_number,
         index_path,
     )
+
+    # Validate collection count if writer was provided
+    if collection_writer is not None:
+        collection_count = collection_writer.total_saved
+        if collection_count != total_processed:
+            logger.warning(
+                "Collection count mismatch: index has %d documents but collection has %d documents",
+                total_processed,
+                collection_count,
+            )
+        else:
+            logger.info(
+                "✓ Validation passed: collection and index both contain %d documents",
+                total_processed,
+            )
+
     return IndexArtifacts(
         index_dir=index_path, model=model, index=index, retriever=retriever
     )
