@@ -90,6 +90,8 @@ stfo-colbert [options]
 | `--model-name` | Hugging Face model id/name | `mixedbread-ai/mxbai-edge-colbert-v0-17m`  |
 | `--index-path` | Path to existing PyLate index directory | (mutually exclusive with `--dataset-path`) |
 | `--dataset-path` | Path to dataset for index creation (file or directory) | -                                          |
+| `--batch-size` | Batch size for encoding | `64`                                       |
+| `--chunk-size` | Number of documents to accumulate before encoding | `10000`                              |
 
 ## Usage Patterns
 
@@ -141,14 +143,24 @@ When `--dataset-path` points to a directory, stfo-colbert will scan for files an
 
 stfo-colbert uses PyLate's PLAID index under the hood:
 - Loads the model (default: `mixedbread-ai/mxbai-edge-colbert-v0-17m`)
-- Encodes documents and builds an index in-memory
+- Encodes documents in chunks and builds an index incrementally
 - Serves top-k retrieval via a simple HTTP API
 
 The index directory contains:
 - **PLAID index files**: The core PyLate index structure
-- **`collection.json.xz`**: A compressed JSON mapping of document IDs to their text content
+- **`collection.db`**: A SQLite database mapping document IDs to their text content
 
-When you build an index from documents, stfo-colbert automatically creates the `collection.json.xz` file to enable text retrieval in search results. If you pass `--index-path` with an existing index, search results will include text snippets only if `collection.json.xz` is present in the index directory.
+### Streaming and Chunked Processing
+
+To handle large datasets efficiently, stfo-colbert processes documents in chunks:
+- Documents are streamed from the dataset (not loaded entirely into memory)
+- Each chunk is encoded and added to the index incrementally
+- The collection mapping is saved to SQLite progressively during indexing
+- Default chunk size is 10,000 documents (configurable via `--chunk-size`)
+
+This approach enables indexing of large datasets (e.g., entire Wikipedia) without running out of memory.
+
+When you build an index from documents, stfo-colbert automatically creates the `collection.db` file to enable text retrieval in search results. If you pass `--index-path` with an existing index, search results will include text snippets only if `collection.db` is present in the index directory.
 
 ## HTTP API
 
@@ -173,7 +185,7 @@ When you build an index from documents, stfo-colbert automatically creates the `
 }
 ```
 
-> **Note:** The `text` field is included if the collection mapping is available (e.g., from a delimited TXT or `collection.json.xz`).
+> **Note:** The `text` field is included if the collection mapping is available (e.g., from a delimited TXT or `collection.db`).
 
 ## Design Notes
 
@@ -221,6 +233,26 @@ curl "http://127.0.0.1:8889/search?query=machine%20learning%20transformers&k=5"
 # Search for specific research areas
 curl "http://127.0.0.1:8889/search?query=neural%20network%20architecture&k=3"
 ```
+
+**Index large Wikipedia dataset:**
+```bash
+# First, download and prepare the Wikipedia 20231101.en dataset
+# Note: This is a large dataset (~20 GB) and will take time to download
+python example_data/wikipedia_20231101_en.py
+
+# Index the Wikipedia dataset with streaming (handles large datasets efficiently)
+# The data will be processed in chunks to avoid memory issues but it will take a lot of time anyway
+stfo-colbert --dataset-path wikipedia_20231101_en_shuffled.txt --chunk-size 10000
+
+# Search for topics in Wikipedia
+curl "http://127.0.0.1:8889/search?query=machine%20learning%20history&k=5"
+```
+
+The `wikipedia_20231101_en.py` script:
+- Downloads the Wikipedia 20231101.en dataset from Hugging Face
+- Shuffles it with a buffer size of 100,000 (good for building index centroids)
+- Formats it as a delimited text file compatible with stfo-colbert
+- Uses streaming to avoid loading the entire dataset into memory
 
 ### General usage examples
 

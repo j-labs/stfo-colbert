@@ -7,8 +7,8 @@ from .indexer import (
     IndexArtifacts,
     build_index,
     load_index_only,
-    save_collection_json,
-    load_collection_json,
+    save_collection_in_chunks,
+    load_collection,
     load_model,
 )
 from .server import create_app, run_server
@@ -37,6 +37,18 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         help="Path to dataset for index creation (file or directory)",
     )
+    p.add_argument(
+        "--batch-size",
+        type=int,
+        default=64,
+        help="Batch size for encoding (default: 64)",
+    )
+    p.add_argument(
+        "--chunk-size",
+        type=int,
+        default=10000,
+        help="Number of documents to accumulate before encoding (default: 20000)",
+    )
     return p.parse_args()
 
 
@@ -59,7 +71,7 @@ def main() -> None:
             # Load a model for query encoding even in index-only mode
             model = load_model(args.model_name)
             # Try to load collection mapping if available
-            collection = load_collection_json(args.index_path)
+            collection = load_collection(args.index_path)
             app = create_app(model=model, retriever=retriever, collection=collection)
             run_server(app, port=args.port)
             return
@@ -73,21 +85,36 @@ def main() -> None:
     try:
         # By default create or reuse an index directory next to the dataset
         index_dir = Path.cwd() / "stfo_indexes" / args.dataset_path.stem
-        artifacts: IndexArtifacts = build_index(
-            documents=prepared.documents,
-            document_ids=prepared.document_ids,
-            index_path=index_dir,
-            model_name=args.model_name,
-            batch_size=32,
-        )
 
-        # Prepare a collection map for returning text fields
-        collection_map = {
-            pid: text for pid, text in zip(prepared.document_ids, prepared.documents)
-        }
+        # Ensure index directory exists before opening collection writer
+        index_dir.mkdir(parents=True, exist_ok=True)
 
-        # Save collection mapping alongside the index
-        save_collection_json(collection_map, index_dir)
+        # Build index using streaming documents, saving collection per chunk
+        with save_collection_in_chunks(index_dir) as collection_writer:
+            artifacts: IndexArtifacts = build_index(
+                documents=prepared.iter_documents(),
+                index_path=index_dir,
+                model_name=args.model_name,
+                batch_size=args.batch_size,
+                document_count=prepared.document_count,
+                encoding_chunk_size=args.chunk_size,
+                collection_writer=collection_writer,
+            )
+
+            # Log collection stats
+            total_saved = collection_writer.total_saved
+            logger.info(
+                "Collection saved with %d documents during indexing", total_saved
+            )
+
+        # Log file size
+        collection_file = index_dir / "collection.db"
+        if collection_file.exists():
+            db_size = collection_file.stat().st_size
+            logger.info("✓ Collection saved: %.2f MB", db_size / (1024 * 1024))
+
+        # Load the collection for serving (keeps it in memory for API responses)
+        collection_map = load_collection(index_dir)
 
         app = create_app(
             model=artifacts.model,
