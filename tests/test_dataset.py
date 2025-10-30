@@ -13,9 +13,11 @@ def test_prepare_from_delimited_txt(tmp_path: Path):
     write_text_file(p, content)
 
     prepared = prepare_from_delimited_txt(p)
-    assert prepared.document_ids == ["0", "1", "2"]
-    assert prepared.documents == ["Doc A", "Doc B", "Doc C"]
-    assert all(DELIMITER not in d for d in prepared.documents)
+    assert prepared.document_count is None  # Not known without pre-counting
+    # Convert iterator to list for testing
+    documents = list(prepared.iter_documents())
+    assert documents == ["Doc A", "Doc B", "Doc C"]
+    assert all(DELIMITER not in d for d in documents)
 
 
 def test_prepare_from_directory_creates_cache(tmp_path: Path):
@@ -26,10 +28,12 @@ def test_prepare_from_directory_creates_cache(tmp_path: Path):
     write_text_file(b, "Hello B")
 
     prepared = prepare_from_directory(tmp_path)
-    assert len(prepared.documents) == 2
-    assert prepared.document_ids == ["0", "1"]
+    # Convert iterator to list for testing
+    documents = list(prepared.iter_documents())
+    assert len(documents) == 2
+    assert prepared.document_count == 2  # Known from cache creation
     # No internal delimiters should remain inside individual docs
-    assert all(DELIMITER not in d for d in prepared.documents)
+    assert all(DELIMITER not in d for d in documents)
 
     # Verify cache file was created
     cache_path = tmp_path / ".stfo_colbert_cache.txt.xz"
@@ -44,7 +48,8 @@ def test_prepare_from_directory_reuses_cache(tmp_path: Path):
 
     # First call creates cache
     prepared1 = prepare_from_directory(tmp_path)
-    assert len(prepared1.documents) == 2
+    documents1 = list(prepared1.iter_documents())
+    assert len(documents1) == 2
     cache_path = tmp_path / ".stfo_colbert_cache.txt.xz"
     assert cache_path.exists()
 
@@ -53,9 +58,10 @@ def test_prepare_from_directory_reuses_cache(tmp_path: Path):
 
     # Second call should use cache (not see modifications)
     prepared2 = prepare_from_directory(tmp_path)
-    assert len(prepared2.documents) == 2
-    assert prepared2.documents == prepared1.documents
-    assert "Modified A" not in prepared2.documents[0]
+    documents2 = list(prepared2.iter_documents())
+    assert len(documents2) == 2
+    assert documents2 == documents1
+    assert "Modified A" not in documents2[0]
 
 
 def test_cache_file_format(tmp_path: Path):
