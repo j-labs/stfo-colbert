@@ -3,8 +3,6 @@ import pytest
 
 from stfo_colbert.indexer import (
     CollectionDB,
-    save_collection,
-    save_collection_streaming,
     load_collection,
 )
 
@@ -93,60 +91,6 @@ def test_collection_db_persistence(tmp_path: Path):
         assert len(db) == 2
         assert db["0"] == "Persistent document"
         assert db["1"] == "Another document"
-
-
-def test_save_and_load_collection(tmp_path: Path):
-    """Test save_collection and load_collection functions."""
-    collection = {
-        "0": "First document",
-        "1": "Second document",
-        "2": "Third document",
-    }
-
-    # Save collection
-    save_collection(collection, tmp_path)
-
-    # Verify file was created
-    db_file = tmp_path / "collection.db"
-    assert db_file.exists()
-
-    # Load collection
-    loaded_db = load_collection(tmp_path)
-    assert loaded_db is not None
-
-    # Verify contents
-    assert len(loaded_db) == 3
-    assert loaded_db["0"] == "First document"
-    assert loaded_db["1"] == "Second document"
-    assert loaded_db["2"] == "Third document"
-
-    # Clean up
-    loaded_db.close()
-
-
-def test_save_collection_streaming(tmp_path: Path):
-    """Test save_collection_streaming with iterator."""
-    documents = [f"Document {i}" for i in range(100)]
-
-    # Save using streaming
-    save_collection_streaming(iter(documents), tmp_path, document_count=100)
-
-    # Verify file was created
-    db_file = tmp_path / "collection.db"
-    assert db_file.exists()
-
-    # Load and verify
-    loaded_db = load_collection(tmp_path)
-    assert loaded_db is not None
-    assert len(loaded_db) == 100
-
-    # Check some entries
-    assert loaded_db["0"] == "Document 0"
-    assert loaded_db["50"] == "Document 50"
-    assert loaded_db["99"] == "Document 99"
-
-    # Clean up
-    loaded_db.close()
 
 
 def test_load_collection_missing_file(tmp_path: Path):

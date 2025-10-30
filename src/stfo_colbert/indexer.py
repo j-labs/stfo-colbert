@@ -87,6 +87,66 @@ class CollectionDB(Mapping):
         self.close()
 
 
+class CollectionWriter:
+    """Writer for incrementally saving collection documents per chunk."""
+
+    def __init__(self, collection_file: Path, batch_size: int = 10000):
+        """Initialize collection writer.
+
+        Args:
+            collection_file: Path to collection.db file
+            batch_size: Number of documents to batch before committing
+        """
+        self.collection_file = collection_file
+        self.batch_size = batch_size
+        self.db = CollectionDB(collection_file)
+        self.batch: list[tuple[str, str]] = []
+        self.total_saved = 0
+
+    def add_documents(self, documents: list[str], start_idx: int) -> None:
+        """Add a chunk of documents to the collection.
+
+        Args:
+            documents: List of document texts
+            start_idx: Starting document index for this chunk
+        """
+        for offset, doc in enumerate(documents):
+            doc_id = str(start_idx + offset)
+            self.batch.append((doc_id, doc))
+
+            # Commit batch when full
+            if len(self.batch) >= self.batch_size:
+                self.db.add_batch(self.batch)
+                self.db.commit()
+                self.total_saved += len(self.batch)
+                self.batch.clear()
+
+    def finalize(self) -> int:
+        """Flush remaining documents and return total count.
+
+        Returns:
+            Total number of documents saved
+        """
+        if self.batch:
+            self.db.add_batch(self.batch)
+            self.db.commit()
+            self.total_saved += len(self.batch)
+            self.batch.clear()
+        return self.total_saved
+
+    def close(self):
+        """Close the database connection."""
+        self.db.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type is None:
+            self.finalize()
+        self.close()
+
+
 @dataclass(frozen=True)
 class IndexArtifacts:
     index_dir: Path
@@ -108,6 +168,7 @@ def build_index(
     batch_size: int = 64,
     encoding_chunk_size: int = 10000,
     document_count: int | None = None,
+    collection_writer: CollectionWriter | None = None,
 ) -> IndexArtifacts:
     """Build index from streaming documents.
 
@@ -119,6 +180,7 @@ def build_index(
         encoding_chunk_size: Number of documents to accumulate before encoding
             (reduces memory usage by processing in chunks)
         document_count: Optional total document count for progress reporting
+        collection_writer: Optional CollectionWriter to save documents per chunk
 
     Returns:
         IndexArtifacts containing model, index, and retriever
@@ -207,6 +269,12 @@ def build_index(
                 chunk_number,
                 total_processed,
             )
+
+            # Save this chunk to collection if writer is provided
+            if collection_writer is not None:
+                chunk_start_idx = total_processed - len(doc_chunk)
+                collection_writer.add_documents(doc_chunk, start_idx=chunk_start_idx)
+
             doc_chunk.clear()
             id_chunk.clear()
 
@@ -250,6 +318,11 @@ def build_index(
             total_processed,
         )
 
+        # Save final chunk to collection if writer is provided
+        if collection_writer is not None:
+            chunk_start_idx = total_processed - len(doc_chunk)
+            collection_writer.add_documents(doc_chunk, start_idx=chunk_start_idx)
+
     retriever = retrieve.ColBERT(index=index)
     logger.info(
         "✓ Index build complete! Indexed %d documents in %d chunks at %s",
@@ -281,79 +354,26 @@ def retrieve_topk(
     return retriever.retrieve(queries_embeddings=query_embeddings, k=k)
 
 
-def save_collection(collection: dict[str, str], index_path: Path) -> None:
-    """Save collection mapping to SQLite database."""
-    collection_file = index_path / "collection.db"
-    logger.info("Saving collection mapping to %s", collection_file)
-
-    with CollectionDB(collection_file) as db:
-        # Batch insert for efficiency
-        items = list(collection.items())
-        batch_size = 10000
-        for i in range(0, len(items), batch_size):
-            batch = items[i : i + batch_size]
-            db.add_batch(batch)
-            if (i + batch_size) % 50000 == 0:
-                logger.info("Saved %d documents...", i + batch_size)
-        db.commit()
-
-    # Log file size
-    db_size = collection_file.stat().st_size
-    logger.info("✓ Collection saved: %.2f MB", db_size / (1024 * 1024))
-
-
-def save_collection_streaming(
-    documents: Iterator[str], index_path: Path, document_count: int | None = None
-) -> None:
-    """Save collection mapping to SQLite database using streaming.
+def save_collection_in_chunks(
+    index_path: Path, batch_size: int = 10000
+) -> CollectionWriter:
+    """Create a CollectionWriter for incremental chunk-based saving.
 
     Args:
-        documents: Iterator yielding documents
         index_path: Path to save collection file
-        document_count: Optional total document count for progress reporting
+        batch_size: Number of documents to batch before committing
+
+    Returns:
+        CollectionWriter instance (use as context manager)
+
+    Example:
+        with save_collection_in_chunks(index_path) as writer:
+            writer.add_documents(chunk1, start_idx=0)
+            writer.add_documents(chunk2, start_idx=len(chunk1))
     """
     collection_file = index_path / "collection.db"
-    logger.info("Saving collection mapping to %s (streaming)", collection_file)
-    if document_count is not None:
-        logger.info(
-            "Streaming through %d documents to build collection map...", document_count
-        )
-
-    with CollectionDB(collection_file) as db:
-        batch = []
-        batch_size = 10000
-        doc_count = 0
-
-        for doc_idx, doc in enumerate(documents):
-            batch.append((str(doc_idx), doc))
-            doc_count += 1
-
-            # Commit batch when full
-            if len(batch) >= batch_size:
-                db.add_batch(batch)
-                db.commit()
-                batch.clear()
-
-                if doc_count % 50000 == 0:
-                    if document_count is not None:
-                        logger.info(
-                            "Saved %d/%d documents...",
-                            doc_count,
-                            document_count,
-                        )
-                    else:
-                        logger.info("Saved %d documents...", doc_count)
-
-        # Save remaining documents
-        if batch:
-            db.add_batch(batch)
-            db.commit()
-
-        logger.info("Built collection database with %d documents", doc_count)
-
-    # Log file size
-    db_size = collection_file.stat().st_size
-    logger.info("✓ Collection saved: %.2f MB", db_size / (1024 * 1024))
+    logger.info("Opening collection writer at %s", collection_file)
+    return CollectionWriter(collection_file, batch_size=batch_size)
 
 
 def load_collection(index_path: Path) -> CollectionDB | None:

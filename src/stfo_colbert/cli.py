@@ -7,7 +7,7 @@ from .indexer import (
     IndexArtifacts,
     build_index,
     load_index_only,
-    save_collection_streaming,
+    save_collection_in_chunks,
     load_collection,
     load_model,
 )
@@ -86,22 +86,32 @@ def main() -> None:
         # By default create or reuse an index directory next to the dataset
         index_dir = Path.cwd() / "stfo_indexes" / args.dataset_path.stem
 
-        # Build index using streaming documents
-        artifacts: IndexArtifacts = build_index(
-            documents=prepared.iter_documents(),
-            index_path=index_dir,
-            model_name=args.model_name,
-            batch_size=args.batch_size,
-            document_count=prepared.document_count,
-            encoding_chunk_size=args.chunk_size,
-        )
+        # Ensure index directory exists before opening collection writer
+        index_dir.mkdir(parents=True, exist_ok=True)
 
-        # Save collection mapping alongside the index using streaming
-        save_collection_streaming(
-            documents=prepared.iter_documents(),
-            index_path=index_dir,
-            document_count=prepared.document_count,
-        )
+        # Build index using streaming documents, saving collection per chunk
+        with save_collection_in_chunks(index_dir) as collection_writer:
+            artifacts: IndexArtifacts = build_index(
+                documents=prepared.iter_documents(),
+                index_path=index_dir,
+                model_name=args.model_name,
+                batch_size=args.batch_size,
+                document_count=prepared.document_count,
+                encoding_chunk_size=args.chunk_size,
+                collection_writer=collection_writer,
+            )
+
+            # Log collection stats
+            total_saved = collection_writer.total_saved
+            logger.info(
+                "Collection saved with %d documents during indexing", total_saved
+            )
+
+        # Log file size
+        collection_file = index_dir / "collection.db"
+        if collection_file.exists():
+            db_size = collection_file.stat().st_size
+            logger.info("✓ Collection saved: %.2f MB", db_size / (1024 * 1024))
 
         # Load the collection for serving (keeps it in memory for API responses)
         collection_map = load_collection(index_dir)
